@@ -1,0 +1,51 @@
+﻿<#@ template language="C#" inherits="InsideClassBodyInPlaceGeneratorBase" #>
+
+<#@ import namespace="JetBrains.ReSharper.Psi" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.CSharp.Tree" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.Util" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Generators.Common" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Helpers" #>
+
+<#
+void WriteCopyExpression(IType type, string memberName, int xIndex = 0)
+{
+    string xName = "x" + (xIndex > 0 ? xIndex.ToString() : null);
+    IType elementType = type.GetGenericUnderlyingType(type.GetTypeElement());
+    switch (type)
+    {
+		case IDeclaredType dt when dt.IsValueType() || dt.IsString():
+			#><#=memberName#><#
+		    break;
+        case IDeclaredType dt when dt.Is(typeof(List<>)) && (elementType.IsValueType() || elementType.IsString()):
+			#><#=memberName#>.ToList()<#
+            break;
+        case IDeclaredType dt when dt.Is(typeof(List<>)):
+			#><#=memberName#>.ConvertAll(<#=xName#> => <#WriteCopyExpression(elementType, xName, xIndex + 1);#>)<#
+            break;
+		case IArrayType at when at.Rank == 1 && (at.ElementType.IsValueType() || at.ElementType.IsString()):
+			#><#=memberName#>.ToArray()<#
+		    break;
+		case IArrayType at when at.Rank == 1:
+			#><#=memberName#>.Select(<#=xName#> => <#WriteCopyExpression(at.ElementType, xName, xIndex + 1);#>).ToArray()<#
+		    break;
+		default:
+			#>new <#=type.GetCSharpTypeName()#>(<#=memberName#>)<#
+		    break;
+    }
+}
+#>
+
+public <#=this.Class.DeclaredName#>(<#=this.Class.DeclaredName#> source)
+{
+	<#foreach(IPropertyDeclaration property in this.Class.PropertyDeclarations.Where(x => !x.IsReadonly)){#>
+		this.<#=property.DeclaredName#> = <#WriteCopyExpression(property.Type, $"source.{property.DeclaredName}");#>;
+	<#}#>
+}
+
+<#+
+	public override string Name => "Simple copy constructor";
+
+    public override string Description =>
+        "Supports copying only value-type properties, properties of type List<T>, T[] and types that has copy constructor.";
+#>

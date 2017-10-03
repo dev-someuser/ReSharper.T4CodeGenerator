@@ -1,0 +1,17 @@
+﻿<#@ template language="C#" inherits="ByClassInPlaceGeneratorBase" #>
+
+<#@ import namespace="T4CodeGenerator.Generators.Core.Generators.Common" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Helpers" #>
+
+<#@ import namespace="DatabaseExampleCore" #>
+
+[<#=Attribute<TableAttribute>()#>("<#=this.Class.DeclaredName.Pluralize()#>")]
+<#LineBreak();#>
+
+<#+
+	public override string Name => "Table attribute";
+
+    public override bool IsAvailableCore() => !this.Class.HasAttribute<TableAttribute>();
+
+    public override int GetPositionToInsert() => this.Class.GetTreeStartOffset().Offset;  
+#>

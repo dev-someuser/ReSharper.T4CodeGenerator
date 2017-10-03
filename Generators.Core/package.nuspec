@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<package>
+  <metadata>
+    <id>Some.T4CodeGenerator.Generators.Core</id>
+    <authors>SomeUser</authors>
+    <owners>SomeUser</owners>
+    <version>1.0.0</version>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Code generating using T4 templates. Core library.</description>
+    <tags>code generation</tags>
+    <dependencies>
+      <dependency id="JetBrains.ReSharper.SDK" version="2017.3.3" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="bin\Debug\T4CodeGenerator.Generators.Core.dll" target="lib" />
+    <file src="bin\Debug\T4CodeGenerator.Generators.Core.pdb" target="lib" />
+  </files>
+</package>

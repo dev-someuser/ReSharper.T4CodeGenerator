@@ -1,0 +1,8 @@
+*.nupkg
+*.user
+*.suo
+_ReSharper.*
+bin
+obj
+packages
+nuget.exe

@@ -1,0 +1,209 @@
+﻿<#@ template language="C#" inherits="ByPatternInPlaceGeneratorBase" #>
+
+<#@ import namespace="JetBrains.ProjectModel" #>
+<#@ import namespace="JetBrains.ReSharper.Feature.Services.StructuralSearch" #>
+<#@ import namespace="JetBrains.ReSharper.Feature.Services.LinqTools" #>
+<#@ import namespace="JetBrains.ReSharper.Psi" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.Resolve" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.CSharp.Tree" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.Tree" #>
+
+<#@ import namespace="System.Collections.Generic" #>
+
+<#@ import namespace="T4CodeGenerator.Generators.Core.Generators.Common" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Helpers" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.StructuralSearch" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.StructuralSearch.Attributes" #>
+
+<#+
+    [ExpressionPlaceholder]
+	public IExpression Enumerable { get; set; }
+
+    [ArgumentPlaceholder]
+    public ILambdaParameterDeclaration Argument { get; set; }
+
+    [ExpressionPlaceholder]
+    public IExpression Condition { get; set; }
+
+    public  override bool Visible => false;
+
+    public override string Name => "Enumerable.First to foreach";
+
+    protected override ByPatternInPlaceGenerationMode GenerationMode =>
+        ByPatternInPlaceGenerationMode.ReplaceMatchedText;
+
+    protected override string Pattern => throw new NotImplementedException();
+
+    protected virtual ITreeNode Target => throw new NotImplementedException();
+
+	protected virtual IType TargetType => throw new NotImplementedException();
+
+	private readonly List<LinqExpression> _linqExpressions = new List<LinqExpression>();
+
+	private readonly HashSet<string> _lambdaArgumentUsedNames = new HashSet<string>();
+
+    protected void Render()
+    {
+        IExpression enumerable = ParseEnumerableRecursive(this.Enumerable);
+
+        string labdaArgumentName = GetLambdaArgumentName(-1 /* expressionIndex */);
+
+		#>
+
+			<#=this.Target.GetText()#> = default(<#=this.TargetType.GetCSharpTypeName()#>);
+
+			bool found = false;
+
+			foreach(var <#=labdaArgumentName#> in <#=enumerable.GetText()#>)
+			{
+				<#+WriteExpression(0 /* expressionIndex */, labdaArgumentName);#>
+			}
+
+			if (!found)
+			{
+				// Element is not found.<#+LineBreak();#>
+			}
+
+		<#+
+    }
+
+    private IExpression ParseEnumerableRecursive(IExpression enumerableExpression)
+    {
+        IExpression result = enumerableExpression;
+
+        StructuralSearchEngine sse = this.DataProvider.Solution.GetComponent<StructuralSearchEngine>();
+
+        IExpression enu;
+        ILambdaParameterDeclaration x;
+        IExpression exp;
+
+        if (enumerableExpression.Matched("$enu$.Select($x$ => $exp$)", sse, out enu, out x, out exp))
+        {
+            result = ParseEnumerableRecursive(enu);
+            _linqExpressions.Add(new SelectLinqExpression(x, exp));
+        }
+
+        if (enumerableExpression.Matched("$enu$.Where($x$ => $arg$)", sse, out enu, out x, out exp))
+        {
+            result = ParseEnumerableRecursive(enu);
+            _linqExpressions.Add(new WhereLinqExpression(x, exp));
+        }
+
+        return result;
+    }
+
+    private string GetLambdaArgumentName(int expressionIndex)
+    {
+        IIdentifier lamdbaArgumentIdentifier;
+
+        if (expressionIndex < _linqExpressions.Count - 1)
+        {
+            lamdbaArgumentIdentifier = _linqExpressions[expressionIndex + 1].LamdbaArgument.NameIdentifier;
+        }
+        else
+        {
+            lamdbaArgumentIdentifier = this.Argument.NameIdentifier;
+        }
+
+        int index = 0;
+        string name = lamdbaArgumentIdentifier.Name;
+        while (!_lambdaArgumentUsedNames.Add(name))
+        {
+            index++;
+            name = lamdbaArgumentIdentifier.Name + index;
+        }
+
+        return name;
+    }
+
+	private void WriteExpression(int expressionIndex, string lamdbaArgumentName)
+    {
+        if (expressionIndex == _linqExpressions.Count)
+        {
+            WriteFirstExpression(lamdbaArgumentName);
+			return;
+        }
+
+        LinqExpression expression = _linqExpressions[expressionIndex];
+
+        IExpression lambdaExpression = 
+			RenameArgument(expression.LamdbaArgument.DeclaredElement, expression.LambdaExpression, lamdbaArgumentName);
+
+        switch (expression)
+        {
+			case SelectLinqExpression _:
+			    lamdbaArgumentName = GetLambdaArgumentName(expressionIndex);
+				#>var <#=lamdbaArgumentName#> = <#=lambdaExpression.GetText()#>;<#+
+			    WriteExpression(expressionIndex + 1, lamdbaArgumentName);
+			    break;
+
+			case WhereLinqExpression _:
+				#>
+					if (<#=lambdaExpression.GetText()#>)
+					{
+						<#+WriteExpression(expressionIndex + 1, lamdbaArgumentName);#>
+					}
+				<#+
+				break;
+        }
+    }
+
+	private void WriteFirstExpression(string lamdbaArgumentName)
+    {
+        IExpression condition = RenameArgument(this.Argument.DeclaredElement, this.Condition, lamdbaArgumentName);
+
+		#>
+			if (<#=condition.GetText()#>)
+			{
+				<#=this.Target.GetText()#> = <#=lamdbaArgumentName#>;
+				found = true;
+			}
+		<#+
+    }
+
+    private IExpression RenameArgument(
+        IDeclaredElement declaredElement,
+        IExpression expression,
+        string newName)
+    {
+        IExpression newExpression = 
+			this.DataProvider.ElementFactory.CreateExpression(expression.GetText());
+        newExpression.SetResolveContextForSandBox(expression);
+
+        foreach (IReference reference in newExpression.FindReferences(declaredElement))
+        {
+            IReferenceExpression newReferenceExpression = 
+				this.DataProvider.ElementFactory.CreateReferenceExpression(newName);
+            ((IExpression) reference.GetTreeNode()).ReplaceBy(newReferenceExpression);
+        }
+
+        return newExpression;
+    }
+	
+    private abstract  class LinqExpression
+    {
+		public ILambdaParameterDeclaration LamdbaArgument { get; }
+
+        public IExpression LambdaExpression { get; }
+
+        protected LinqExpression(ILambdaParameterDeclaration lamdbaArgument, IExpression lambdaExpression)
+        {
+            this.LamdbaArgument = lamdbaArgument;
+			this.LambdaExpression = lambdaExpression;
+        }
+    }
+
+    private class WhereLinqExpression : LinqExpression
+    {
+        public WhereLinqExpression(ILambdaParameterDeclaration lamdbaArgument, IExpression lambdaExpression) : base(lamdbaArgument, lambdaExpression)
+        {
+        }
+    }
+
+    private class SelectLinqExpression : LinqExpression
+    {
+        public SelectLinqExpression(ILambdaParameterDeclaration lamdbaArgument, IExpression lambdaExpression) : base(lamdbaArgument, lambdaExpression)
+        {
+        }
+    }
+#>

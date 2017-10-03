@@ -1,0 +1,54 @@
+﻿<#@ template language="C#" inherits="ByPropertyInPlaceGeneratorBase" #>
+
+<#@ import namespace="JetBrains.ReSharper.Psi" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.CSharp.Tree" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Generators.Common" #>
+<#@ import namespace="T4CodeGenerator.Generators.Core.Helpers" #>
+
+<#@ import namespace="DatabaseExampleCore" #>
+
+<#
+    bool IsTableType(string typeName)
+    {
+        IClrDeclaredElement[] typeElements = 
+			this.DataProvider.GetSymbolScope().GetElementsByShortName(typeName);
+        foreach (IClrDeclaredElement typeElement in typeElements)
+        {
+            IClassLikeDeclaration declaration = typeElement.GetSingleDeclaration<IClassLikeDeclaration>();
+            if (declaration != null && declaration.HasAttribute<TableAttribute>())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    string GetTableTypeName()
+    {
+        string result = this.Property.DeclaredName.Replace("Id", string.Empty);
+        while (!IsTableType(result))
+        {
+            result = result.RemoveFirstWord();
+			if (string.IsNullOrEmpty(result))
+            {
+				return this.Property.DeclaredName.Replace("Id", string.Empty);
+            }
+        }
+
+        return result;
+    }
+#>
+
+[<#=Attribute<DatabaseExampleCore.TableReferenceAttribute>()#>(typeof(<#=GetTableTypeName()#>))]
+<#LineBreak();#>
+
+<#+
+    public override string Name => "TableReference attribute";
+
+    public override bool IsAvailableCore() => 
+		this.Property.DeclaredName.EndsWith("Id") &&
+        !this.Property.HasAttribute<DatabaseExampleCore.TableReferenceAttribute>();
+
+    public override int GetPositionToInsert() => this.Property.GetTreeStartOffset().Offset;
+#>

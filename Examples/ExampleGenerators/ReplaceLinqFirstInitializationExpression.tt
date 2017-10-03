@@ -1,0 +1,25 @@
+﻿<#@ template language="C#" inherits="ReplaceLinqFirstExpressionBase" #>
+
+<#@ import namespace="JetBrains.ReSharper.Psi" #>
+<#@ import namespace="JetBrains.ReSharper.Psi.Tree" #>
+
+<#@ import namespace="T4CodeGenerator.Generators.Core.StructuralSearch.Attributes" #>
+
+<#=this.Type#> <#Render();#>
+
+<#+
+	[IdentifierPlaceholder]
+	public ITreeNode Variable { get; set; }
+
+	[TypePlaceholder]
+	public IType Type { get; set; }
+
+    public override bool Visible => true;
+
+	protected override string Pattern => "$Type$ $Variable$ = $Enumerable$.First($Argument$ => $Condition$);";
+
+    protected override ITreeNode Target => this.Variable;
+
+    protected override IType TargetType => this.Type;
+
+#>
